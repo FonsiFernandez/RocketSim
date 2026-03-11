@@ -6,14 +6,14 @@ from typing import Optional
 
 import numpy as np
 
-from rocketsim.models.rocket import Rocket
-from rocketsim.models.mission import (
+from kinetica.models.rocket import Rocket
+from kinetica.models.mission import (
     MissionPlan,
     BurnCommand,
     TargetOrbitCommand,
     SOIChangeCommand,
 )
-from rocketsim.models.celestial_body import CelestialBody
+from kinetica.models.celestial_body import CelestialBody
 
 
 G0 = 9.80665

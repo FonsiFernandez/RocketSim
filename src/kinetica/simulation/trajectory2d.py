@@ -1,9 +1,9 @@
-# src/rocketsim/simulation/trajectory2d.py
+# src/kinetica/simulation/trajectory2d.py
 import numpy as np
 from typing import Tuple, List
 
-from rocketsim.models.planet import Planet
-from rocketsim.models.rocket import Rocket
+from kinetica.models.planet import Planet
+from kinetica.models.rocket import Rocket
 
 
 def thrust_pitch_angle_deg(t: float, pitch_start: float, pitch_end: float, final_pitch_deg: float) -> float:

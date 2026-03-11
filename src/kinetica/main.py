@@ -21,11 +21,11 @@ def main():
     args = parser.parse_args()
 
     if args.ui == "cli":
-        from rocketsim.ui.cli import run_demo
+        from kinetica.ui.cli import run_demo
         run_demo()
     else:
-        dashboard_path = os.path.join(SRC_DIR, "rocketsim", "ui", "dashboard.py")
-        subprocess.run(["streamlit", "run", dashboard_path], check=True)
+        dashboard_path = os.path.join(SRC_DIR, "kinetica", "ui", "dashboard.py")
+        subprocess.run([sys.executable, "-m", "streamlit", "run", dashboard_path], check=True)
 
 
 if __name__ == "__main__":

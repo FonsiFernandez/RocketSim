@@ -1,5 +1,5 @@
 from typing import List
-from rocketsim.models.stage import Stage
+from kinetica.models.stage import Stage
 
 
 class Rocket:

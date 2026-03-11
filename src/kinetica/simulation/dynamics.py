@@ -1,8 +1,8 @@
 import numpy as np
 from typing import Tuple
 
-from rocketsim.models.planet import Planet
-from rocketsim.models.rocket import Rocket
+from kinetica.models.planet import Planet
+from kinetica.models.rocket import Rocket
 
 
 def rocket_ode_vertical(

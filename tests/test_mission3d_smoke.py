@@ -1,8 +1,8 @@
 import math
 
-from rocketsim.config.rockets import get_rocket_by_name
-from rocketsim.config.celestial_systems import build_earth_moon_system
-from rocketsim.models.mission import (
+from kinetica.config.rockets import get_rocket_by_name
+from kinetica.config.celestial_systems import build_earth_moon_system
+from kinetica.models.mission import (
     MissionPlan,
     MissionPhase,
     LaunchSite,
@@ -10,7 +10,7 @@ from rocketsim.models.mission import (
     SOIChangeCommand,
     TargetOrbitCommand,
 )
-from rocketsim.simulation.mission3d import run_mission_3d
+from kinetica.simulation.mission3d import run_mission_3d
 
 
 def test_mission3d_smoke():

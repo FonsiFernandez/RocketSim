@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from rocketsim.models.celestial_body import CelestialBody, OrbitalElements
+from kinetica.models.celestial_body import CelestialBody, OrbitalElements
 
 
 def build_earth_moon_system():

@@ -1,5 +1,5 @@
-from rocketsim.models.stage import Stage
-from rocketsim.models.rocket import Rocket
+from kinetica.models.stage import Stage
+from kinetica.models.rocket import Rocket
 
 
 # =========================

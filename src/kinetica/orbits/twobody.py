@@ -1,4 +1,4 @@
-# src/rocketsim/orbits/twobody.py
+# src/kinetica/orbits/twobody.py
 import numpy as np
 from typing import Tuple
 

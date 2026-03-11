@@ -9,9 +9,9 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
-from rocketsim.models.planet import PLANETS_BY_NAME
-from rocketsim.config.rockets import get_rocket_by_name
-from rocketsim.simulation.trajectory2d import run_ascent_2d_with_pitch
+from kinetica.models.planet import PLANETS_BY_NAME
+from kinetica.config.rockets import get_rocket_by_name
+from kinetica.simulation.trajectory2d import run_ascent_2d_with_pitch
 
 
 # ================== PARÁMETROS CONFIGURABLES ==================

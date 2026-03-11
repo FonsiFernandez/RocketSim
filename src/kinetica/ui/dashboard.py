@@ -11,15 +11,15 @@ SRC_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-from rocketsim.config.rockets import (
+from kinetica.config.rockets import (
     ROCKET_PRESETS,
     get_rocket_by_name,
     get_rocket_preset_info,
 )
-from rocketsim.config.celestial_systems import build_earth_moon_system
-from rocketsim.models.rocket import Rocket
-from rocketsim.models.stage import Stage
-from rocketsim.models.mission import (
+from kinetica.config.celestial_systems import build_earth_moon_system
+from kinetica.models.rocket import Rocket
+from kinetica.models.stage import Stage
+from kinetica.models.mission import (
     MissionPlan,
     MissionPhase,
     LaunchSite,
@@ -27,12 +27,12 @@ from rocketsim.models.mission import (
     TargetOrbitCommand,
     SOIChangeCommand,
 )
-from rocketsim.simulation.mission3d import (
+from kinetica.simulation.mission3d import (
     run_mission_3d,
     orbital_elements_relative,
     launch_site_speed_due_to_rotation,
 )
-from rocketsim.ui.i18n import LANGUAGES, get_lang_code, tr
+from kinetica.ui.i18n import LANGUAGES, get_lang_code, tr
 
 
 def format_seconds(seconds: float) -> str:
@@ -429,7 +429,12 @@ def render_mission_editor(default_phases: List[MissionPhase], lang: str) -> List
                 )
 
             if phase_type == "burn":
-                default_burn = base.burn or BurnCommand()
+                default_burn = base.burn or BurnCommand(
+                    direction_mode="prograde",
+                    thrust_newtons=500_000.0,
+                    isp_seconds=300.0,
+                    duration=300.0,
+                )
                 c3, c4, c5, c6 = st.columns(4)
 
                 with c3:

@@ -1,9 +1,9 @@
-# src/rocketsim/models/stage.py
+# src/kinetica/models/stage.py
 import math
 from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
-    from rocketsim.models.planet import Planet
+    from kinetica.models.planet import Planet
 
 G0 = 9.80665  # gravedad estándar [m/s^2]
 
