@@ -1,8 +1,8 @@
-# RocketSim
+# Kinetica
 
 ![img.png](src%2Fres%2Fimg.png)
 
-RocketSim is a modular Python-based rocket and mission simulation project focused on launch vehicle design, ascent analysis, orbital insertion, and simplified 3D mission planning.
+Kinetica is a modular Python-based rocket and mission simulation project focused on launch vehicle design, ascent analysis, orbital insertion, and simplified 3D mission planning.
 
 The project started as a 2D ascent simulator and is evolving into a more complete mission analysis tool with:
 
@@ -62,7 +62,7 @@ The project started as a 2D ascent simulator and is evolving into a more complet
 ```text
 rocket-sim/
 ├─ src/
-│  └─ rocketsim/
+│  └─ Kinetica/
 │     ├─ config/
 │     │  ├─ rockets.py
 │     │  └─ celestial_systems.py
@@ -119,13 +119,13 @@ If you are using a virtual environment on Windows:
 ### CLI mode
 
 ```
-python src/rocketsim/main.py --ui cli
+python src/Kinetica/main.py --ui cli
 ```
 
 ### Streamlit dashboard
 
 ```
-streamlit run src/rocketsim/ui/dashboard.py
+streamlit run src/Kinetica/ui/dashboard.py
 ```
 
 If import resolution fails because of the src/ layout, make sure the project is run from the repository root and that src is available in PYTHONPATH, or keep the existing path bootstrap code inside the app files.
@@ -189,7 +189,7 @@ A waiting or propagation phase used to continue the mission until the spacecraft
 
 ## Physics model
 
-RocketSim currently uses a simplified but useful physical model:
+Kinetica currently uses a simplified but useful physical model:
 
 * RK4 numerical integration
 * Newtonian gravity
@@ -206,7 +206,7 @@ This makes the simulator useful for prototyping and educational mission analysis
 
 ## Current limitations
 
-RocketSim is still under active development. Current limitations include:
+Kinetica is still under active development. Current limitations include:
 
 * no Lambert solver
 * no optimized translunar injection guidance

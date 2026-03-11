@@ -5,8 +5,8 @@ LANGUAGES = {
 
 TRANSLATIONS = {
     "app_title": {
-        "en": "RocketSim – 3D Mission Designer",
-        "es": "RocketSim – Diseñador de Misiones 3D",
+        "en": "Kinetica – 3D Mission Designer",
+        "es": "Kinetica – Diseñador de Misiones 3D",
     },
     "language": {
         "en": "Language / Idioma",

@@ -11,7 +11,7 @@ if SRC_DIR not in sys.path:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="RocketSim launcher")
+    parser = argparse.ArgumentParser(description="Kinetica")
     parser.add_argument(
         "--ui",
         choices=["cli", "dashboard"],

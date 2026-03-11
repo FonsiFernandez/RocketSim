@@ -1326,7 +1326,7 @@ def render_results(result, bodies, lang: str):
 
 
 def main():
-    st.set_page_config(page_title="RocketSim 3D Mission Designer", layout="wide")
+    st.set_page_config(page_title="Kinetica", layout="wide")
 
     language_name = st.sidebar.selectbox(
         tr("language", "en"),

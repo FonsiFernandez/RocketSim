@@ -46,6 +46,92 @@ def norm(v: np.ndarray) -> float:
     return float(np.linalg.norm(v))
 
 
+def altitude_relative_to_body(
+    t: float,
+    position_root: np.ndarray,
+    body: CelestialBody,
+) -> float:
+    body_pos, _ = body.position_velocity_in_root_frame(t)
+    return norm(position_root - body_pos) - body.radius
+
+
+def has_impacted_body(
+    t: float,
+    position_root: np.ndarray,
+    body: CelestialBody,
+    tolerance_m: float = 1.0,
+) -> bool:
+    return altitude_relative_to_body(t, position_root, body) < -tolerance_m
+
+
+def interpolate_impact_state(
+    t: float,
+    state_before: np.ndarray,
+    state_after: np.ndarray,
+    body: CelestialBody,
+    h: float,
+) -> tuple[float, np.ndarray]:
+    alt_before = altitude_relative_to_body(t, state_before[:3], body)
+    alt_after = altitude_relative_to_body(t + h, state_after[:3], body)
+
+    if abs(alt_before - alt_after) < 1e-12:
+        alpha = 1.0
+    else:
+        alpha = alt_before / (alt_before - alt_after)
+
+    alpha = max(0.0, min(1.0, alpha))
+
+    impact_state = state_before + alpha * (state_after - state_before)
+    impact_time = t + alpha * h
+
+    # Ajuste final para dejar el punto exactamente en la superficie
+    body_pos, _ = body.position_velocity_in_root_frame(impact_time)
+    rel = impact_state[:3] - body_pos
+    rel_norm = norm(rel)
+    if rel_norm > 1e-12:
+        impact_state = impact_state.copy()
+        impact_state[:3] = body_pos + (body.radius / rel_norm) * rel
+
+    return impact_time, impact_state
+
+
+def append_impact_and_stop(
+    *,
+    t: float,
+    h: float,
+    state: np.ndarray,
+    next_state: np.ndarray,
+    dominant_body: CelestialBody,
+    times: list[float],
+    states: list[np.ndarray],
+    bodies_list: list[str],
+    events: list[dict],
+) -> tuple[float, np.ndarray, bool]:
+    if not has_impacted_body(t + h, next_state[:3], dominant_body):
+        return t, next_state, False
+
+    impact_time, impact_state = interpolate_impact_state(
+        t=t,
+        state_before=state,
+        state_after=next_state,
+        body=dominant_body,
+        h=h,
+    )
+
+    events.append({
+        "type": "IMPACT",
+        "time": impact_time,
+        "body": dominant_body.name,
+        "altitude_m": 0.0,
+    })
+
+    times.append(impact_time)
+    states.append(impact_state.copy())
+    bodies_list.append(dominant_body.name)
+
+    return impact_time, impact_state, True
+
+
 def body_fixed_position_from_lat_lon_radius(
     latitude_deg: float,
     longitude_deg: float,
@@ -180,10 +266,12 @@ def launch_state_from_site(
     launch_alt_m: float,
     launch_azimuth_deg: float,
 ) -> tuple[np.ndarray, np.ndarray]:
+    surface_clearance_m = 1.0
+
     r_site_body = body_fixed_position_from_lat_lon_radius(
         latitude_deg=launch_lat_deg,
         longitude_deg=launch_lon_deg,
-        radius_m=central_body.radius + launch_alt_m,
+        radius_m=central_body.radius + launch_alt_m + surface_clearance_m,
     )
 
     body_pos_root, body_vel_root = central_body.position_velocity_in_root_frame(t0)
@@ -210,7 +298,6 @@ def launch_state_from_site(
 
     velocity_root = body_vel_root + v_site_rotation_root + 1.0 * launch_dir_root
     return position_root, velocity_root
-
 
 def burn_direction(
     cmd: BurnCommand,
@@ -318,9 +405,20 @@ def separate_empty_stage_if_needed(
 ) -> np.ndarray:
     idx = vehicle.active_stage_index
     if idx is None:
+        print("DEBUG separate_empty_stage_if_needed -> idx is None at t =", t)
         return state
 
+    print(
+        "DEBUG separate_empty_stage_if_needed:",
+        "t =", t,
+        "idx =", idx,
+        "propellant_left =", vehicle.propellant_left[idx],
+        "dropped =", vehicle.dropped[idx],
+        "mass_before =", state[6],
+    )
+
     if vehicle.propellant_left[idx] > 1e-9:
+        print("DEBUG -> stage still has propellant, not separating")
         return state
 
     if not vehicle.dropped[idx]:
@@ -331,9 +429,16 @@ def separate_empty_stage_if_needed(
         events.append({"type": "STAGE_SEPARATION", "time": t, "stage_index": idx})
         state[6] = max(state[6], dry_mass_floor(rocket, vehicle))
 
-    sync_active_stage(vehicle, rocket)
-    return state
+        print(
+            "DEBUG -> stage separated:",
+            "stage_index =", idx,
+            "dry_mass =", stage.dry_mass,
+            "mass_after =", state[6],
+        )
 
+    sync_active_stage(vehicle, rocket)
+    print("DEBUG -> new active_stage_index =", vehicle.active_stage_index)
+    return state
 
 def atmospheric_properties(
     t: float,
@@ -346,7 +451,7 @@ def atmospheric_properties(
     r_rel = position_root - body_pos
     altitude = norm(r_rel) - body.radius
 
-    rho = body.atmospheric_density(altitude)
+    rho = body.atmospheric_density(max(0.0, altitude))
 
     omega_root = body.angular_velocity_vector_root(t)
     v_air_root = body_vel + np.cross(omega_root, r_rel)
@@ -377,12 +482,15 @@ def aerodynamic_drag_acceleration(
     if area <= 0.0:
         return np.zeros(3)
 
-    rho, v_rel_air, _ = atmospheric_properties(
+    rho, v_rel_air, altitude = atmospheric_properties(
         t=t,
         position_root=pos,
         velocity_root=vel,
         body=body,
     )
+
+    if altitude <= 0.0:
+        return np.zeros(3)
 
     v_rel = norm(v_rel_air)
     if rho <= 0.0 or v_rel <= 1e-9:
@@ -532,12 +640,21 @@ def propagate_phase_burn(
             isp_override=cmd.isp_seconds,
         )
 
+        print("DEBUG phase burn")
+        print("  t =", t)
+        print("  cmd.duration =", cmd.duration)
+        print("  cmd.thrust_newtons =", cmd.thrust_newtons)
+        print("  cmd.isp_seconds =", cmd.isp_seconds)
+        print("  active_stage_index =", vehicle.active_stage_index)
+
         if thrust_n <= 0.0 or isp_s <= 0.0:
+            print("  DEBUG -> NO_THRUST")
             events.append({"type": "NO_THRUST", "time": t})
             break
 
         mdot = thrust_n / (isp_s * G0)
         if mdot <= 0.0:
+            print("  DEBUG -> INVALID_MDOT")
             events.append({"type": "INVALID_MDOT", "time": t})
             break
 
@@ -546,6 +663,15 @@ def propagate_phase_burn(
         idx = vehicle.active_stage_index
         prop_left = vehicle.propellant_left[idx]
         max_stage_burn_time = prop_left / mdot if mdot > 0 else 0.0
+
+        print("  thrust_n =", thrust_n)
+        print("  isp_s =", isp_s)
+        print("  mdot =", mdot)
+        print("  dt =", dt)
+        print("  remaining =", remaining)
+        print("  h =", h)
+        print("  prop_left =", prop_left)
+        print("  max_stage_burn_time =", max_stage_burn_time)
 
         if max_stage_burn_time <= 1e-9:
             state = separate_empty_stage_if_needed(rocket, vehicle, state, t, events)
@@ -571,6 +697,22 @@ def propagate_phase_burn(
             thrust_n=thrust_n,
             thrust_dir=direction,
         )
+
+        impact_t, impact_state, impacted = append_impact_and_stop(
+            t=t,
+            h=h,
+            state=state,
+            next_state=next_state,
+            dominant_body=dominant_body,
+            times=times,
+            states=states,
+            bodies_list=bodies_list,
+            events=events,
+        )
+        if impacted:
+            t = impact_t
+            state = impact_state
+            break
 
         t += h
         next_state = consume_propellant_and_stage(
@@ -633,6 +775,22 @@ def propagate_phase_coast(
             thrust_dir=np.zeros(3),
         )
 
+        impact_t, impact_state, impacted = append_impact_and_stop(
+            t=t,
+            h=h,
+            state=state,
+            next_state=next_state,
+            dominant_body=dominant_body,
+            times=times,
+            states=states,
+            bodies_list=bodies_list,
+            events=events,
+        )
+        if impacted:
+            t = impact_t
+            state = impact_state
+            break
+
         t += h
         state = next_state
 
@@ -683,12 +841,21 @@ def propagate_phase_target_orbit(
             isp_override=cmd.isp_seconds,
         )
 
+        print("DEBUG phase burn")
+        print("  t =", t)
+        print("  cmd.duration =", cmd.duration)
+        print("  cmd.thrust_newtons =", cmd.thrust_newtons)
+        print("  cmd.isp_seconds =", cmd.isp_seconds)
+        print("  active_stage_index =", vehicle.active_stage_index)
+
         if thrust_n <= 0.0 or isp_s <= 0.0:
+            print("  DEBUG -> NO_THRUST")
             events.append({"type": "NO_THRUST", "time": t})
             break
 
         mdot = thrust_n / (isp_s * G0)
         if mdot <= 0.0:
+            print("  DEBUG -> INVALID_MDOT")
             events.append({"type": "INVALID_MDOT", "time": t})
             break
 
@@ -697,6 +864,15 @@ def propagate_phase_target_orbit(
         idx = vehicle.active_stage_index
         prop_left = vehicle.propellant_left[idx]
         max_stage_burn_time = prop_left / mdot if mdot > 0 else 0.0
+
+        print("  thrust_n =", thrust_n)
+        print("  isp_s =", isp_s)
+        print("  mdot =", mdot)
+        print("  dt =", dt)
+        print("  remaining =", remaining)
+        print("  h =", h)
+        print("  prop_left =", prop_left)
+        print("  max_stage_burn_time =", max_stage_burn_time)
 
         if max_stage_burn_time <= 1e-9:
             state = separate_empty_stage_if_needed(rocket, vehicle, state, t, events)
@@ -728,6 +904,22 @@ def propagate_phase_target_orbit(
             thrust_n=thrust_n,
             thrust_dir=direction,
         )
+
+        impact_t, impact_state, impacted = append_impact_and_stop(
+            t=t,
+            h=h,
+            state=state,
+            next_state=next_state,
+            dominant_body=dominant_body,
+            times=times,
+            states=states,
+            bodies_list=bodies_list,
+            events=events,
+        )
+        if impacted:
+            t = impact_t
+            state = impact_state
+            break
 
         t += h
         next_state = consume_propellant_and_stage(
@@ -794,6 +986,22 @@ def propagate_phase_soi_change(
             thrust_dir=np.zeros(3),
         )
 
+        impact_t, impact_state, impacted = append_impact_and_stop(
+            t=t,
+            h=h,
+            state=state,
+            next_state=next_state,
+            dominant_body=dominant_body,
+            times=times,
+            states=states,
+            bodies_list=bodies_list,
+            events=events,
+        )
+        if impacted:
+            t = impact_t
+            state = impact_state
+            break
+
         t += h
         state = next_state
 
@@ -831,6 +1039,20 @@ def run_mission_3d(
 
     vehicle = init_vehicle_state(rocket)
 
+    print("DEBUG total_initial_mass =", rocket.total_initial_mass())
+    print("DEBUG payload_mass =", rocket.payload_mass)
+
+    for i, s in enumerate(rocket.stages):
+        print(
+            f"DEBUG stage {i}: "
+            f"dry_mass={getattr(s, 'dry_mass', None)}, "
+            f"propellant_mass={getattr(s, 'propellant_mass', None)}, "
+            f"thrust_vac={getattr(s, 'thrust_vac', None)}, "
+            f"isp_vac={getattr(s, 'isp_vac', None)}"
+        )
+
+    print("DEBUG vehicle.propellant_left =", vehicle.propellant_left)
+
     t = t0
     dominant_body = dominant_body_for_position(t, state[:3], bodies)
 
@@ -839,6 +1061,22 @@ def run_mission_3d(
     all_dom = [dominant_body.name]
     all_phase_names = ["INIT"]
     all_events: list[dict] = []
+
+    # Seguridad extra: impacto inmediato en el estado inicial
+    if has_impacted_body(t, state[:3], dominant_body):
+        all_events.append({
+            "type": "IMPACT",
+            "time": t,
+            "body": dominant_body.name,
+            "altitude_m": 0.0,
+        })
+        return SimulationResult3D(
+            times=np.array(all_times, dtype=float),
+            states=np.array(all_states, dtype=float),
+            dominant_bodies=all_dom,
+            phase_names=all_phase_names,
+            events=all_events,
+        )
 
     for phase in mission.phases:
         if phase.phase_type == "burn":
@@ -909,6 +1147,9 @@ def run_mission_3d(
             all_phase_names.append(phase.name)
 
         all_events.extend(events)
+
+        if any(event.get("type") == "IMPACT" for event in events):
+            break
 
     return SimulationResult3D(
         times=np.array(all_times, dtype=float),
