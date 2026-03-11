@@ -11,7 +11,11 @@ SRC_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-from rocketsim.config.rockets import ROCKET_PRESETS, get_rocket_by_name
+from rocketsim.config.rockets import (
+    ROCKET_PRESETS,
+    get_rocket_by_name,
+    get_rocket_preset_info,
+)
 from rocketsim.config.celestial_systems import build_earth_moon_system
 from rocketsim.models.rocket import Rocket
 from rocketsim.models.stage import Stage
@@ -157,7 +161,7 @@ def phase_template(profile_name: str) -> List[MissionPhase]:
                 name="Launch burn",
                 phase_type="burn",
                 burn=BurnCommand(
-                    direction_mode="prograde",
+                    direction_mode="radial_out",
                     thrust_newtons=2_000_000.0,
                     isp_seconds=320.0,
                     duration=500.0,
@@ -176,7 +180,7 @@ def phase_template(profile_name: str) -> List[MissionPhase]:
                 name="Ascent",
                 phase_type="burn",
                 burn=BurnCommand(
-                    direction_mode="prograde",
+                    direction_mode="radial_out",
                     thrust_newtons=2_000_000.0,
                     isp_seconds=320.0,
                     duration=350.0,
@@ -259,20 +263,23 @@ def phase_template(profile_name: str) -> List[MissionPhase]:
     return []
 
 
-def render_stage_editor(base_rocket: Rocket, lang: str) -> List[Stage]:
+def render_stage_editor(base_rocket: Rocket, lang: str, allow_stage_count_edit: bool = False) -> List[Stage]:
     st.markdown(f"### {tr('stages', lang)}")
 
     with st.expander(tr("edit_stages", lang), expanded=True):
         default_num_stages = len(base_rocket.stages)
 
-        num_stages = st.number_input(
-            tr("num_stages", lang) if "num_stages" in LANGUAGES.get(lang, {}) else "Number of stages",
-            min_value=1,
-            max_value=8,
-            value=default_num_stages,
-            step=1,
-            key="num_stages",
-        )
+        if allow_stage_count_edit:
+            num_stages = st.number_input(
+                "Number of stages",
+                min_value=1,
+                max_value=8,
+                value=default_num_stages,
+                step=1,
+                key="num_stages",
+            )
+        else:
+            num_stages = default_num_stages
 
         new_stages: List[Stage] = []
 
@@ -281,8 +288,8 @@ def render_stage_editor(base_rocket: Rocket, lang: str) -> List[Stage]:
                 s = base_rocket.stages[idx]
             else:
                 s = Stage(
-                    dry_mass=1000.0,
-                    propellant_mass=5000.0,
+                    dry_mass=1_000.0,
+                    propellant_mass=5_000.0,
                     thrust_sl=200_000.0,
                     thrust_vac=220_000.0,
                     isp_sl=280.0,
@@ -1374,11 +1381,16 @@ def main():
         tr("profile_custom", lang): "Personalizado",
     }
 
+    rocket_keys = list(ROCKET_PRESETS.keys())
+
     rocket_name = st.sidebar.selectbox(
         tr("rocket_preset", lang),
-        options=list(ROCKET_PRESETS.keys()),
-        index=list(ROCKET_PRESETS.keys()).index("light") if "light" in ROCKET_PRESETS else 0,
+        options=rocket_keys,
+        index=rocket_keys.index("light") if "light" in rocket_keys else 0,
+        format_func=lambda key: ROCKET_PRESETS[key]["label"],
     )
+
+    preset_info = get_rocket_preset_info(rocket_name)
     base_rocket = get_rocket_by_name(rocket_name)
 
     mission_profile_label = st.sidebar.selectbox(
@@ -1449,8 +1461,28 @@ def main():
 
     st.warning(tr("warning_model", lang))
 
-    new_stages = render_stage_editor(base_rocket, lang)
-    rocket = Rocket(new_stages, cd=cd_value, payload_mass=payload)
+    st.sidebar.caption(preset_info["description"])
+
+    is_custom = rocket_name == "custom"
+    allow_edit = is_custom
+
+    if not is_custom and preset_info.get("editable", False):
+        allow_edit = st.sidebar.checkbox("Edit preset", value=False)
+
+    if allow_edit:
+        new_stages = render_stage_editor(
+            base_rocket,
+            lang,
+            allow_stage_count_edit=is_custom,
+        )
+        rocket = Rocket(new_stages, cd=cd_value, payload_mass=payload)
+    else:
+        rocket = Rocket(
+            stages=base_rocket.stages,
+            cd=cd_value,
+            payload_mass=payload,
+        )
+
     show_rocket_summary(rocket, lang)
 
     default_phases = phase_template(mission_profile)

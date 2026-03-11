@@ -29,7 +29,7 @@ def test_mission3d_smoke():
                 name="Launch burn",
                 phase_type="burn",
                 burn=BurnCommand(
-                    direction_mode="prograde",
+                    direction_mode="radial_out",
                     thrust_newtons=2_000_000.0,
                     isp_seconds=320.0,
                     duration=300.0,
