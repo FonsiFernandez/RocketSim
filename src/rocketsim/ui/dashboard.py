@@ -261,23 +261,48 @@ def phase_template(profile_name: str) -> List[MissionPhase]:
 
 def render_stage_editor(base_rocket: Rocket, lang: str) -> List[Stage]:
     st.markdown(f"### {tr('stages', lang)}")
-    new_stages: List[Stage] = []
 
     with st.expander(tr("edit_stages", lang), expanded=True):
-        for idx, s in enumerate(base_rocket.stages, start=1):
-            st.markdown(f"**{tr('stage', lang)} {idx}**")
+        default_num_stages = len(base_rocket.stages)
+
+        num_stages = st.number_input(
+            tr("num_stages", lang) if "num_stages" in LANGUAGES.get(lang, {}) else "Number of stages",
+            min_value=1,
+            max_value=8,
+            value=default_num_stages,
+            step=1,
+            key="num_stages",
+        )
+
+        new_stages: List[Stage] = []
+
+        for idx in range(int(num_stages)):
+            if idx < len(base_rocket.stages):
+                s = base_rocket.stages[idx]
+            else:
+                s = Stage(
+                    dry_mass=1000.0,
+                    propellant_mass=5000.0,
+                    thrust_sl=200_000.0,
+                    thrust_vac=220_000.0,
+                    isp_sl=280.0,
+                    isp_vac=310.0,
+                    diameter=2.0,
+                )
+
+            st.markdown(f"**{tr('stage', lang)} {idx + 1}**")
             c1, c2, c3 = st.columns(3)
 
             with c1:
                 dry = st.number_input(
-                    f"{tr('dry_mass', lang)} {idx} [kg]",
+                    f"{tr('dry_mass', lang)} {idx + 1} [kg]",
                     min_value=0.0,
                     value=float(s.dry_mass),
                     step=100.0,
                     key=f"dry_{idx}",
                 )
                 prop = st.number_input(
-                    f"{tr('propellant', lang)} {idx} [kg]",
+                    f"{tr('propellant', lang)} {idx + 1} [kg]",
                     min_value=0.0,
                     value=float(s.propellant_mass),
                     step=100.0,
@@ -286,7 +311,7 @@ def render_stage_editor(base_rocket: Rocket, lang: str) -> List[Stage]:
 
             with c2:
                 thrust_sl = st.number_input(
-                    f"{tr('thrust_sl', lang)} {idx} [kN]",
+                    f"{tr('thrust_sl', lang)} {idx + 1} [kN]",
                     min_value=0.0,
                     value=float(s.thrust_sl / 1000.0),
                     step=10.0,
@@ -294,7 +319,7 @@ def render_stage_editor(base_rocket: Rocket, lang: str) -> List[Stage]:
                 ) * 1000.0
 
                 thrust_vac = st.number_input(
-                    f"{tr('thrust_vac', lang)} {idx} [kN]",
+                    f"{tr('thrust_vac', lang)} {idx + 1} [kN]",
                     min_value=0.0,
                     value=float(s.thrust_vac / 1000.0),
                     step=10.0,
@@ -303,21 +328,21 @@ def render_stage_editor(base_rocket: Rocket, lang: str) -> List[Stage]:
 
             with c3:
                 isp_sl = st.number_input(
-                    f"{tr('isp_sl', lang)} {idx} [s]",
+                    f"{tr('isp_sl', lang)} {idx + 1} [s]",
                     min_value=0.0,
                     value=float(s.isp_sl),
                     step=5.0,
                     key=f"isp_sl_{idx}",
                 )
                 isp_vac = st.number_input(
-                    f"{tr('isp_vac', lang)} {idx} [s]",
+                    f"{tr('isp_vac', lang)} {idx + 1} [s]",
                     min_value=0.0,
                     value=float(s.isp_vac),
                     step=5.0,
                     key=f"isp_vac_{idx}",
                 )
                 diameter = st.number_input(
-                    f"{tr('diameter', lang)} {idx} [m]",
+                    f"{tr('diameter', lang)} {idx + 1} [m]",
                     min_value=0.1,
                     value=float(s.diameter),
                     step=0.1,
@@ -338,6 +363,12 @@ def render_stage_editor(base_rocket: Rocket, lang: str) -> List[Stage]:
 
     return new_stages
 
+def default_mission_phase(index: int) -> MissionPhase:
+    return MissionPhase(
+        name=f"Phase {index + 1}",
+        phase_type="coast",
+        coast_duration=600.0,
+    )
 
 def show_rocket_summary(rocket: Rocket, lang: str):
     with st.expander(tr("rocket_summary", lang), expanded=False):
@@ -370,11 +401,7 @@ def render_mission_editor(default_phases: List[MissionPhase], lang: str) -> List
         direction_options = ["prograde", "retrograde", "radial_out", "radial_in", "normal", "antinormal"]
 
         for i in range(int(n_phases)):
-            base = default_phases[i] if i < len(default_phases) else MissionPhase(
-                name=f"Phase {i+1}",
-                phase_type="coast",
-                coast_duration=600.0,
-            )
+            base = default_phases[i] if i < len(default_phases) else default_mission_phase(i)
 
             st.markdown(f"**{tr('phase_name', lang)} {i+1}**")
             c1, c2 = st.columns(2)
