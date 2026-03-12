@@ -284,7 +284,7 @@ def ariane6_2() -> Rocket:
         dry_mass=10_000.0,
         propellant_mass=100_000.0,
         thrust_sl=0.0,
-        thrust_vac=180_000.0,
+        thrust_vac=1_800_000.0,
         isp_sl=0.0,
         isp_vac=445.0,
         diameter=4.5,

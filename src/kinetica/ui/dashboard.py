@@ -35,6 +35,166 @@ from kinetica.simulation.mission3d import (
 from kinetica.ui.i18n import LANGUAGES, get_lang_code, tr
 
 
+def inject_phase_styles():
+    st.markdown(
+        """
+        <style>
+        .phase-shell {
+            border-radius: 18px;
+            padding: 0.2rem 0.2rem 0.4rem 0.2rem;
+            margin: 0.65rem 0 1.15rem 0;
+            background: transparent;
+        }
+
+        .phase-header {
+            border-radius: 14px;
+            padding: 14px 16px;
+            margin-bottom: 14px;
+            border: 1px solid rgba(128, 128, 128, 0.18);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+            color: inherit;
+        }
+
+        .phase-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: inherit;
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .phase-subtitle {
+            font-size: 0.80rem;
+            color: rgba(127, 127, 127, 0.95);
+            margin-top: 4px;
+        }
+
+        .phase-badge {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 0.22rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: inherit;
+            background: rgba(255,255,255,0.14);
+            border: 1px solid rgba(255,255,255,0.10);
+        }
+
+        .phase-section-title {
+            font-size: 0.74rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: rgba(127, 127, 127, 0.95);
+            margin: 0.2rem 0 0.5rem 0;
+        }
+
+        div[data-testid="stNumberInput"],
+        div[data-testid="stSelectbox"],
+        div[data-testid="stTextInput"] {
+            margin-bottom: 0.30rem;
+        }
+
+        div[data-testid="stVerticalBlock"] > div:has(> div.phase-shell) {
+            margin-bottom: 0.25rem;
+        }
+
+        /* Mejor contraste en tema oscuro */
+        [data-baseweb="select"] + div,
+        .stApp {
+            color: inherit;
+        }
+
+        /* Tema oscuro: subtítulos un poco más claros */
+        .stApp[data-teststate="dark"] .phase-subtitle,
+        .stApp[data-teststate="dark"] .phase-section-title {
+            color: rgba(210, 220, 235, 0.72);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def phase_color_for_type(phase_type: str) -> dict:
+    palette = {
+        "burn": {
+            "bg": "linear-gradient(135deg, rgba(183, 76, 76, 0.30), rgba(86, 30, 30, 0.30))",
+            "border": "rgba(255, 120, 120, 0.22)",
+            "badge": "#d96b6b",
+            "label": "Burn phase",
+        },
+        "coast": {
+            "bg": "linear-gradient(135deg, rgba(76, 114, 183, 0.28), rgba(26, 43, 84, 0.28))",
+            "border": "rgba(120, 166, 255, 0.22)",
+            "badge": "#5d8fe8",
+            "label": "Coast phase",
+        },
+        "target_orbit": {
+            "bg": "linear-gradient(135deg, rgba(76, 183, 145, 0.26), rgba(23, 70, 58, 0.28))",
+            "border": "rgba(108, 224, 182, 0.22)",
+            "badge": "#4fc79e",
+            "label": "Target orbit phase",
+        },
+        "soi_change": {
+            "bg": "linear-gradient(135deg, rgba(166, 104, 196, 0.28), rgba(61, 29, 77, 0.28))",
+            "border": "rgba(204, 141, 235, 0.22)",
+            "badge": "#b47ce2",
+            "label": "SOI transition",
+        },
+    }
+    return palette.get(
+        phase_type,
+        {
+            "bg": "linear-gradient(135deg, rgba(110,110,110,0.25), rgba(40,40,40,0.25))",
+            "border": "rgba(180,180,180,0.18)",
+            "badge": "#8f8f8f",
+            "label": "Phase",
+        },
+    )
+
+
+def render_phase_header(idx: int, phase_name: str, phase_type: str):
+    colors = phase_color_for_type(phase_type)
+    st.markdown(
+        f"""
+        <div class="phase-shell">
+            <div class="phase-header" style="background:{colors['bg']}; border-color:{colors['border']};">
+                <div class="phase-title">Phase {idx} · {phase_name}</div>
+                <div class="phase-subtitle">{colors['label']}</div>
+                <div class="phase-badge" style="border-color:{colors['border']};">
+                    {phase_type}
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def phase_card_start(idx: int, name: str, phase_type: str, subtitle: str = ""):
+    subtitle_block = f'<div class="phase-subtitle">{subtitle}</div>' if subtitle else ""
+    st.markdown(
+        f"""
+        <div class="phase-card">
+            <div class="phase-header">
+                <div>
+                    <div class="phase-title">Phase {idx} · {name}</div>
+                    {subtitle_block}
+                </div>
+                <div class="phase-badge">{phase_type}</div>
+            </div>
+            <div class="phase-divider"></div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def phase_card_end():
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def format_seconds(seconds: float) -> str:
     seconds = float(seconds)
     if seconds < 60:
@@ -370,12 +530,14 @@ def render_stage_editor(base_rocket: Rocket, lang: str, allow_stage_count_edit: 
 
     return new_stages
 
+
 def default_mission_phase(index: int) -> MissionPhase:
     return MissionPhase(
         name=f"Phase {index + 1}",
         phase_type="coast",
         coast_duration=600.0,
     )
+
 
 def show_rocket_summary(rocket: Rocket, lang: str):
     with st.expander(tr("rocket_summary", lang), expanded=False):
@@ -393,6 +555,8 @@ def render_mission_editor(default_phases: List[MissionPhase], lang: str) -> List
     st.markdown(f"### {tr('mission_phases', lang)}")
 
     with st.expander(tr("edit_mission", lang), expanded=True):
+        inject_phase_styles()
+
         n_phases = st.number_input(
             tr("num_phases", lang),
             min_value=1,
@@ -406,221 +570,232 @@ def render_mission_editor(default_phases: List[MissionPhase], lang: str) -> List
 
         phase_options = ["burn", "coast", "target_orbit", "soi_change"]
         direction_options = ["prograde", "retrograde", "radial_out", "radial_in", "normal", "antinormal"]
+        soi_options = ["Earth", "Moon", "Sun"]
 
         for i in range(int(n_phases)):
             base = default_phases[i] if i < len(default_phases) else default_mission_phase(i)
 
-            st.markdown(f"**{tr('phase_name', lang)} {i+1}**")
-            c1, c2 = st.columns(2)
+            preview_name = st.session_state.get(f"phase_name_{i}", base.name)
+            preview_type = st.session_state.get(f"phase_type_{i}", base.phase_type)
 
-            with c1:
-                phase_name = st.text_input(
-                    f"{tr('phase_name', lang)} {i+1}",
-                    value=base.name,
-                    key=f"phase_name_{i}",
-                )
+            phase_box = st.container(border=True)
+            with phase_box:
+                render_phase_header(i + 1, preview_name, preview_type)
 
-            with c2:
-                phase_type = st.selectbox(
-                    f"{tr('phase_type', lang)} {i+1}",
-                    options=phase_options,
-                    index=phase_options.index(base.phase_type),
-                    key=f"phase_type_{i}",
-                )
+                st.markdown('<div class="phase-section-title">Definition</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
 
-            if phase_type == "burn":
-                default_burn = base.burn or BurnCommand(
-                    direction_mode="prograde",
-                    thrust_newtons=500_000.0,
-                    isp_seconds=300.0,
-                    duration=300.0,
-                )
-                c3, c4, c5, c6 = st.columns(4)
-
-                with c3:
-                    direction_mode = st.selectbox(
-                        f"{tr('burn_direction', lang)} {i+1}",
-                        options=direction_options,
-                        index=direction_options.index(
-                            default_burn.direction_mode if default_burn.direction_mode in direction_options else "prograde"
-                        ),
-                        key=f"burn_dir_{i}",
+                with c1:
+                    phase_name = st.text_input(
+                        f"{tr('phase_name', lang)} {i+1}",
+                        value=preview_name,
+                        key=f"phase_name_{i}",
                     )
 
-                with c4:
-                    thrust_kn = st.number_input(
-                        f"{tr('thrust_vac', lang)} {i+1} [kN]",
-                        min_value=0.0,
-                        value=float((default_burn.thrust_newtons or 0.0) / 1000.0),
-                        step=10.0,
-                        key=f"burn_thrust_{i}",
+                with c2:
+                    phase_type = st.selectbox(
+                        f"{tr('phase_type', lang)} {i+1}",
+                        options=phase_options,
+                        index=phase_options.index(preview_type),
+                        key=f"phase_type_{i}",
                     )
 
-                with c5:
-                    isp_s = st.number_input(
-                        f"{tr('isp_vac', lang)} {i+1} [s]",
+                st.markdown('<div class="phase-section-title">Parameters</div>', unsafe_allow_html=True)
+
+                if phase_type == "burn":
+                    default_burn = base.burn or BurnCommand(
+                        direction_mode="prograde",
+                        thrust_newtons=500_000.0,
+                        isp_seconds=300.0,
+                        duration=300.0,
+                    )
+
+                    c3, c4, c5, c6 = st.columns(4)
+
+                    with c3:
+                        direction_mode = st.selectbox(
+                            f"{tr('burn_direction', lang)} {i+1}",
+                            options=direction_options,
+                            index=direction_options.index(
+                                default_burn.direction_mode if default_burn.direction_mode in direction_options else "prograde"
+                            ),
+                            key=f"burn_dir_{i}",
+                        )
+
+                    with c4:
+                        thrust_kn = st.number_input(
+                            f"{tr('thrust_vac', lang)} {i+1} [kN]",
+                            min_value=0.0,
+                            value=float((default_burn.thrust_newtons or 0.0) / 1000.0),
+                            step=10.0,
+                            key=f"burn_thrust_{i}",
+                        )
+
+                    with c5:
+                        isp_s = st.number_input(
+                            f"{tr('isp_vac', lang)} {i+1} [s]",
+                            min_value=1.0,
+                            value=float(default_burn.isp_seconds or 300.0),
+                            step=5.0,
+                            key=f"burn_isp_{i}",
+                        )
+
+                    with c6:
+                        duration_s = st.number_input(
+                            f"{tr('burn_duration', lang)} {i+1} [s]",
+                            min_value=1.0,
+                            value=float(default_burn.duration),
+                            step=10.0,
+                            key=f"burn_duration_{i}",
+                        )
+
+                    phases.append(
+                        MissionPhase(
+                            name=phase_name,
+                            phase_type="burn",
+                            burn=BurnCommand(
+                                direction_mode=direction_mode,
+                                thrust_newtons=thrust_kn * 1000.0,
+                                isp_seconds=isp_s,
+                                duration=duration_s,
+                            ),
+                        )
+                    )
+
+                elif phase_type == "coast":
+                    default_coast = base.coast_duration if base.coast_duration > 0 else 600.0
+
+                    coast_duration = st.number_input(
+                        f"{tr('coast_duration', lang)} {i+1} [s]",
                         min_value=1.0,
-                        value=float(default_burn.isp_seconds or 300.0),
-                        step=5.0,
-                        key=f"burn_isp_{i}",
-                    )
-
-                with c6:
-                    duration_s = st.number_input(
-                        f"{tr('burn_duration', lang)} {i+1} [s]",
-                        min_value=1.0,
-                        value=float(default_burn.duration),
-                        step=10.0,
-                        key=f"burn_duration_{i}",
-                    )
-
-                phases.append(
-                    MissionPhase(
-                        name=phase_name,
-                        phase_type="burn",
-                        burn=BurnCommand(
-                            direction_mode=direction_mode,
-                            thrust_newtons=thrust_kn * 1000.0,
-                            isp_seconds=isp_s,
-                            duration=duration_s,
-                        ),
-                    )
-                )
-
-            elif phase_type == "coast":
-                default_coast = base.coast_duration if base.coast_duration > 0 else 600.0
-
-                coast_duration = st.number_input(
-                    f"{tr('coast_duration', lang)} {i+1} [s]",
-                    min_value=1.0,
-                    value=float(default_coast),
-                    step=60.0,
-                    key=f"coast_duration_{i}",
-                )
-
-                phases.append(
-                    MissionPhase(
-                        name=phase_name,
-                        phase_type="coast",
-                        coast_duration=coast_duration,
-                    )
-                )
-
-            elif phase_type == "target_orbit":
-                default_target = base.target_orbit or TargetOrbitCommand(
-                    target_periapsis_altitude=180_000.0,
-                    target_apoapsis_altitude=220_000.0,
-                )
-
-                c3, c4, c5 = st.columns(3)
-                with c3:
-                    target_rp_km = st.number_input(
-                        f"{tr('target_periapsis', lang)} {i+1} [km]",
-                        min_value=0.0,
-                        value=float(default_target.target_periapsis_altitude / 1000.0),
-                        step=10.0,
-                        key=f"target_rp_{i}",
-                    )
-                with c4:
-                    target_ra_km = st.number_input(
-                        f"{tr('target_apoapsis', lang)} {i+1} [km]",
-                        min_value=0.0,
-                        value=float(default_target.target_apoapsis_altitude / 1000.0),
-                        step=10.0,
-                        key=f"target_ra_{i}",
-                    )
-                with c5:
-                    tolerance_km = st.number_input(
-                        f"{tr('tolerance', lang)} {i+1} [km]",
-                        min_value=0.1,
-                        value=float(default_target.tolerance_m / 1000.0),
-                        step=1.0,
-                        key=f"target_tol_{i}",
-                    )
-
-                c6, c7, c8, c9 = st.columns(4)
-                with c6:
-                    direction_mode = st.selectbox(
-                        f"{tr('target_direction', lang)} {i+1}",
-                        options=direction_options,
-                        index=direction_options.index(
-                            default_target.direction_mode if default_target.direction_mode in direction_options else "prograde"
-                        ),
-                        key=f"target_dir_{i}",
-                    )
-                with c7:
-                    thrust_kn = st.number_input(
-                        f"{tr('thrust_vac', lang)} {i+1} [kN]",
-                        min_value=0.0,
-                        value=float((default_target.thrust_newtons or 0.0) / 1000.0),
-                        step=10.0,
-                        key=f"target_thrust_{i}",
-                    )
-                with c8:
-                    isp_s = st.number_input(
-                        f"{tr('isp_vac', lang)} {i+1} [s]",
-                        min_value=1.0,
-                        value=float(default_target.isp_seconds or 300.0),
-                        step=5.0,
-                        key=f"target_isp_{i}",
-                    )
-                with c9:
-                    max_duration = st.number_input(
-                        f"{tr('target_max_duration', lang)} {i+1} [s]",
-                        min_value=1.0,
-                        value=float(default_target.max_duration),
+                        value=float(default_coast),
                         step=60.0,
-                        key=f"target_max_duration_{i}",
+                        key=f"coast_duration_{i}",
                     )
 
-                phases.append(
-                    MissionPhase(
-                        name=phase_name,
-                        phase_type="target_orbit",
-                        target_orbit=TargetOrbitCommand(
-                            target_periapsis_altitude=target_rp_km * 1000.0,
-                            target_apoapsis_altitude=target_ra_km * 1000.0,
-                            tolerance_m=tolerance_km * 1000.0,
-                            max_duration=max_duration,
-                            direction_mode=direction_mode,
-                            thrust_newtons=thrust_kn * 1000.0,
-                            isp_seconds=isp_s,
-                        ),
-                    )
-                )
-
-            elif phase_type == "soi_change":
-                default_soi = base.soi_change or SOIChangeCommand(target_body_name="Moon")
-
-                c3, c4 = st.columns(2)
-                with c3:
-                    target_body_name = st.selectbox(
-                        f"{tr('target_soi', lang)} {i+1}",
-                        options=["Earth", "Moon", "Sun"],
-                        index=["Earth", "Moon", "Sun"].index(
-                            default_soi.target_body_name if default_soi.target_body_name in ["Earth", "Moon", "Sun"] else "Moon"
-                        ),
-                        key=f"soi_target_{i}",
-                    )
-                with c4:
-                    max_duration = st.number_input(
-                        f"{tr('soi_wait', lang)} {i+1} [s]",
-                        min_value=1.0,
-                        value=float(default_soi.max_duration),
-                        step=3600.0,
-                        key=f"soi_max_duration_{i}",
+                    phases.append(
+                        MissionPhase(
+                            name=phase_name,
+                            phase_type="coast",
+                            coast_duration=coast_duration,
+                        )
                     )
 
-                phases.append(
-                    MissionPhase(
-                        name=phase_name,
-                        phase_type="soi_change",
-                        soi_change=SOIChangeCommand(
-                            target_body_name=target_body_name,
-                            max_duration=max_duration,
-                        ),
+                elif phase_type == "target_orbit":
+                    default_target = base.target_orbit or TargetOrbitCommand(
+                        target_periapsis_altitude=180_000.0,
+                        target_apoapsis_altitude=220_000.0,
                     )
-                )
+
+                    c3, c4, c5 = st.columns(3)
+                    with c3:
+                        target_rp_km = st.number_input(
+                            f"{tr('target_periapsis', lang)} {i+1} [km]",
+                            min_value=0.0,
+                            value=float(default_target.target_periapsis_altitude / 1000.0),
+                            step=10.0,
+                            key=f"target_rp_{i}",
+                        )
+                    with c4:
+                        target_ra_km = st.number_input(
+                            f"{tr('target_apoapsis', lang)} {i+1} [km]",
+                            min_value=0.0,
+                            value=float(default_target.target_apoapsis_altitude / 1000.0),
+                            step=10.0,
+                            key=f"target_ra_{i}",
+                        )
+                    with c5:
+                        tolerance_km = st.number_input(
+                            f"{tr('tolerance', lang)} {i+1} [km]",
+                            min_value=0.1,
+                            value=float(default_target.tolerance_m / 1000.0),
+                            step=1.0,
+                            key=f"target_tol_{i}",
+                        )
+
+                    c6, c7, c8, c9 = st.columns(4)
+                    with c6:
+                        direction_mode = st.selectbox(
+                            f"{tr('target_direction', lang)} {i+1}",
+                            options=direction_options,
+                            index=direction_options.index(
+                                default_target.direction_mode if default_target.direction_mode in direction_options else "prograde"
+                            ),
+                            key=f"target_dir_{i}",
+                        )
+                    with c7:
+                        thrust_kn = st.number_input(
+                            f"{tr('thrust_vac', lang)} {i+1} [kN]",
+                            min_value=0.0,
+                            value=float((default_target.thrust_newtons or 0.0) / 1000.0),
+                            step=10.0,
+                            key=f"target_thrust_{i}",
+                        )
+                    with c8:
+                        isp_s = st.number_input(
+                            f"{tr('isp_vac', lang)} {i+1} [s]",
+                            min_value=1.0,
+                            value=float(default_target.isp_seconds or 300.0),
+                            step=5.0,
+                            key=f"target_isp_{i}",
+                        )
+                    with c9:
+                        max_duration = st.number_input(
+                            f"{tr('target_max_duration', lang)} {i+1} [s]",
+                            min_value=1.0,
+                            value=float(default_target.max_duration),
+                            step=60.0,
+                            key=f"target_max_duration_{i}",
+                        )
+
+                    phases.append(
+                        MissionPhase(
+                            name=phase_name,
+                            phase_type="target_orbit",
+                            target_orbit=TargetOrbitCommand(
+                                target_periapsis_altitude=target_rp_km * 1000.0,
+                                target_apoapsis_altitude=target_ra_km * 1000.0,
+                                tolerance_m=tolerance_km * 1000.0,
+                                max_duration=max_duration,
+                                direction_mode=direction_mode,
+                                thrust_newtons=thrust_kn * 1000.0,
+                                isp_seconds=isp_s,
+                            ),
+                        )
+                    )
+
+                elif phase_type == "soi_change":
+                    default_soi = base.soi_change or SOIChangeCommand(target_body_name="Moon")
+
+                    c3, c4 = st.columns(2)
+                    with c3:
+                        target_body_name = st.selectbox(
+                            f"{tr('target_soi', lang)} {i+1}",
+                            options=soi_options,
+                            index=soi_options.index(
+                                default_soi.target_body_name if default_soi.target_body_name in soi_options else "Moon"
+                            ),
+                            key=f"soi_target_{i}",
+                        )
+                    with c4:
+                        max_duration = st.number_input(
+                            f"{tr('soi_wait', lang)} {i+1} [s]",
+                            min_value=1.0,
+                            value=float(default_soi.max_duration),
+                            step=3600.0,
+                            key=f"soi_max_duration_{i}",
+                        )
+
+                    phases.append(
+                        MissionPhase(
+                            name=phase_name,
+                            phase_type="soi_change",
+                            soi_change=SOIChangeCommand(
+                                target_body_name=target_body_name,
+                                max_duration=max_duration,
+                            ),
+                        )
+                    )
 
     return phases
 
@@ -672,7 +847,7 @@ def build_event_table(events: list[dict]):
     return rows
 
 
-def render_results(result, bodies, lang: str):
+def render_results(result, bodies, phases: List[MissionPhase], lang: str):
     times = result.times
     states = result.states
 
@@ -1357,15 +1532,17 @@ def render_results(result, bodies, lang: str):
 
     with tab_events:
         st.markdown(f"### {tr('mission_events', lang)}")
-        render_events(result.events, lang)
 
+        render_events_by_phase(result, phases, lang)
+
+        st.markdown("### Raw event table")
         rows = build_event_table(result.events)
         if rows:
             st.dataframe(rows, use_container_width=True, hide_index=True)
 
 
 def main():
-    st.set_page_config(page_title="Kinetica", layout="wide")
+    st.set_page_config(page_title="Kinetica", layout="wide", page_icon=str("🚀"))
 
     language_name = st.sidebar.selectbox(
         tr("language", "en"),
@@ -1504,6 +1681,36 @@ def main():
             phases=phases,
         )
 
+        print("=== DEBUG UI -> RUN ===")
+        print("rocket_name =", rocket_name)
+        print("payload =", rocket.payload_mass)
+        print("cd =", rocket.cd)
+
+        for i, s in enumerate(rocket.stages):
+            print(
+                f"stage {i}: dry={s.dry_mass}, prop={s.propellant_mass}, "
+                f"thrust_sl={s.thrust_sl}, thrust_vac={s.thrust_vac}, "
+                f"isp_sl={s.isp_sl}, isp_vac={s.isp_vac}, diameter={s.diameter}"
+            )
+
+        for i, ph in enumerate(phases):
+            print(f"phase {i}: name={ph.name}, type={ph.phase_type}")
+            if ph.burn is not None:
+                print(
+                    f"  burn: dir={ph.burn.direction_mode}, thrust={ph.burn.thrust_newtons}, "
+                    f"isp={ph.burn.isp_seconds}, duration={ph.burn.duration}"
+                )
+            if ph.target_orbit is not None:
+                print(
+                    f"  target: rp={ph.target_orbit.target_periapsis_altitude}, "
+                    f"ra={ph.target_orbit.target_apoapsis_altitude}, "
+                    f"tol={ph.target_orbit.tolerance_m}, "
+                    f"max_duration={ph.target_orbit.max_duration}, "
+                    f"thrust={ph.target_orbit.thrust_newtons}, "
+                    f"isp={ph.target_orbit.isp_seconds}"
+                )
+        print("=======================")
+
         try:
             result = run_mission_3d(
                 rocket=rocket,
@@ -1513,12 +1720,118 @@ def main():
                 t0=t0,
                 dt=dt,
             )
-            render_results(result, bodies, lang)
+            render_results(result, bodies, phases, lang)
         except Exception as ex:
             st.error(f"{tr('error_simulation', lang)}: {ex}")
     else:
         st.info(tr("configure_and_simulate", lang))
 
+def build_phase_intervals(times: np.ndarray, phase_names: list[str]):
+    if len(times) == 0 or len(phase_names) == 0:
+        return []
+
+    intervals = []
+    start_idx = 0
+    current_phase = phase_names[0]
+
+    for i in range(1, len(phase_names)):
+        if phase_names[i] != current_phase:
+            intervals.append({
+                "phase_name": current_phase,
+                "start_time": float(times[start_idx]),
+                "end_time": float(times[i - 1]),
+                "start_index": start_idx,
+                "end_index": i - 1,
+            })
+            start_idx = i
+            current_phase = phase_names[i]
+
+    intervals.append({
+        "phase_name": current_phase,
+        "start_time": float(times[start_idx]),
+        "end_time": float(times[len(times) - 1]),
+        "start_index": start_idx,
+        "end_index": len(times) - 1,
+    })
+
+    return intervals
+
+def attach_events_to_phases(events: list[dict], phase_intervals: list[dict]):
+    grouped = []
+
+    for interval in phase_intervals:
+        start_t = interval["start_time"]
+        end_t = interval["end_time"]
+
+        phase_events = []
+        for ev in events:
+            ev_t = float(ev.get("time", 0.0))
+            if start_t <= ev_t <= end_t:
+                phase_events.append(ev)
+
+        grouped.append({
+            **interval,
+            "events": phase_events,
+            "duration": end_t - start_t,
+        })
+
+    return grouped
+
+def render_events_by_phase(result, phases: List[MissionPhase], lang: str):
+    phase_intervals = build_phase_intervals(result.times, result.phase_names)
+    grouped = attach_events_to_phases(result.events, phase_intervals)
+
+    phase_type_map = {ph.name: ph.phase_type for ph in phases}
+
+    if not grouped:
+        st.info(tr("no_events", lang))
+        return
+
+    for idx, item in enumerate(grouped, start=1):
+        phase_name = item["phase_name"]
+        phase_type = phase_type_map.get(phase_name, "unknown")
+        start_t = item["start_time"]
+        end_t = item["end_time"]
+        duration = item["duration"]
+        events = item["events"]
+
+        with st.expander(
+            f"Phase {idx} · {phase_name} · {phase_type} · "
+            f"{format_seconds(start_t)} → {format_seconds(end_t)} "
+            f"({format_seconds(duration)})",
+            expanded=True,
+        ):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.write(f"**Start:** {format_seconds(start_t)}")
+            with c2:
+                st.write(f"**End:** {format_seconds(end_t)}")
+            with c3:
+                st.write(f"**Duration:** {format_seconds(duration)}")
+
+            if not events:
+                st.write("No events in this phase.")
+            else:
+                for ev in events:
+                    ev_t = float(ev.get("time", 0.0))
+                    ev_type = ev.get("type", "EVENT")
+
+                    if ev_type == "SOI_CHANGE":
+                        desc = f"{ev.get('from', '?')} → {ev.get('to', '?')}"
+                    elif ev_type == "TARGET_SOI_REACHED":
+                        desc = f"Target SOI reached: {ev.get('body', '?')}"
+                    elif ev_type == "TARGET_ORBIT_REACHED":
+                        desc = f"Target orbit reached: {ev.get('body', '?')}"
+                    elif ev_type == "STAGE_SEPARATION":
+                        desc = f"Stage separation: {ev.get('stage_index', 0) + 1}"
+                    elif ev_type == "NO_ACTIVE_STAGE":
+                        desc = "No active stage"
+                    elif ev_type == "NO_THRUST":
+                        desc = "No thrust"
+                    else:
+                        desc = str(ev)
+
+                    st.write(f"- **{format_seconds(ev_t)}** · `{ev_type}` · {desc}")
 
 if __name__ == "__main__":
     main()

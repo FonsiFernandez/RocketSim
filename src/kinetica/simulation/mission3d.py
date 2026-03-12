@@ -390,11 +390,7 @@ def current_stage_thrust_isp(
     stg = current_stage(vehicle, rocket)
     if stg is None:
         return 0.0, 0.0
-
-    thrust_n = float(thrust_override) if thrust_override is not None else float(stg.thrust_vac)
-    isp_s = float(isp_override) if isp_override is not None else float(stg.isp_vac)
-    return thrust_n, isp_s
-
+    return float(stg.thrust_vac), float(stg.isp_vac)
 
 def separate_empty_stage_if_needed(
     rocket: Rocket,
@@ -843,7 +839,7 @@ def propagate_phase_target_orbit(
 
         print("DEBUG phase burn")
         print("  t =", t)
-        print("  cmd.duration =", cmd.duration)
+        print("  cmd.max_duration =", cmd.max_duration)
         print("  cmd.thrust_newtons =", cmd.thrust_newtons)
         print("  cmd.isp_seconds =", cmd.isp_seconds)
         print("  active_stage_index =", vehicle.active_stage_index)
