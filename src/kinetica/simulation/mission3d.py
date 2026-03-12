@@ -35,6 +35,58 @@ class VehicleState:
     dropped: list[bool]
 
 
+def build_stage_propellant_snapshot(rocket: Rocket, vehicle: VehicleState) -> list[dict]:
+    snapshot = []
+    for i, stage in enumerate(rocket.stages):
+        initial_prop = float(stage.propellant_mass)
+        remaining_prop = float(vehicle.propellant_left[i])
+        used_prop = initial_prop - remaining_prop
+
+        snapshot.append({
+            "stage_index": i,
+            "dropped": bool(vehicle.dropped[i]),
+            "initial_propellant": initial_prop,
+            "remaining_propellant": remaining_prop,
+            "used_propellant": used_prop,
+            "dry_mass": float(stage.dry_mass),
+        })
+    return snapshot
+
+
+def build_vehicle_snapshot(rocket: Rocket, vehicle: VehicleState, state: np.ndarray) -> dict:
+    per_stage = build_stage_propellant_snapshot(rocket, vehicle)
+
+    total_prop_initial = sum(s["initial_propellant"] for s in per_stage)
+    total_prop_remaining = sum(s["remaining_propellant"] for s in per_stage)
+    total_prop_used = sum(s["used_propellant"] for s in per_stage)
+
+    return {
+        "vehicle_mass": float(state[6]),
+        "active_stage_index": vehicle.active_stage_index,
+        "total_propellant_initial": total_prop_initial,
+        "total_propellant_remaining": total_prop_remaining,
+        "total_propellant_used": total_prop_used,
+        "stages": per_stage,
+    }
+
+
+def make_event(
+    rocket: Rocket,
+    vehicle: VehicleState,
+    state: np.ndarray,
+    event_type: str,
+    time_value: float,
+    **extra,
+) -> dict:
+    event = {
+        "type": event_type,
+        "time": float(time_value),
+    }
+    event.update(extra)
+    event.update(build_vehicle_snapshot(rocket, vehicle, state))
+    return event
+
+
 def unit(v: np.ndarray) -> np.ndarray:
     n = np.linalg.norm(v)
     if n < 1e-12:
@@ -84,7 +136,6 @@ def interpolate_impact_state(
     impact_state = state_before + alpha * (state_after - state_before)
     impact_time = t + alpha * h
 
-    # Ajuste final para dejar el punto exactamente en la superficie
     body_pos, _ = body.position_velocity_in_root_frame(impact_time)
     rel = impact_state[:3] - body_pos
     rel_norm = norm(rel)
@@ -101,6 +152,8 @@ def append_impact_and_stop(
     h: float,
     state: np.ndarray,
     next_state: np.ndarray,
+    rocket: Rocket,
+    vehicle: VehicleState,
     dominant_body: CelestialBody,
     times: list[float],
     states: list[np.ndarray],
@@ -118,12 +171,17 @@ def append_impact_and_stop(
         h=h,
     )
 
-    events.append({
-        "type": "IMPACT",
-        "time": impact_time,
-        "body": dominant_body.name,
-        "altitude_m": 0.0,
-    })
+    events.append(
+        make_event(
+            rocket=rocket,
+            vehicle=vehicle,
+            state=impact_state,
+            event_type="IMPACT",
+            time_value=impact_time,
+            body=dominant_body.name,
+            altitude_m=0.0,
+        )
+    )
 
     times.append(impact_time)
     states.append(impact_state.copy())
@@ -299,6 +357,7 @@ def launch_state_from_site(
     velocity_root = body_vel_root + v_site_rotation_root + 1.0 * launch_dir_root
     return position_root, velocity_root
 
+
 def burn_direction(
     cmd: BurnCommand,
     position_root: np.ndarray,
@@ -390,7 +449,11 @@ def current_stage_thrust_isp(
     stg = current_stage(vehicle, rocket)
     if stg is None:
         return 0.0, 0.0
-    return float(stg.thrust_vac), float(stg.isp_vac)
+
+    thrust = float(thrust_override) if thrust_override is not None and thrust_override > 0.0 else float(stg.thrust_vac)
+    isp = float(isp_override) if isp_override is not None and isp_override > 0.0 else float(stg.isp_vac)
+    return thrust, isp
+
 
 def separate_empty_stage_if_needed(
     rocket: Rocket,
@@ -422,8 +485,19 @@ def separate_empty_stage_if_needed(
         state = state.copy()
         state[6] -= float(stage.dry_mass)
         vehicle.dropped[idx] = True
-        events.append({"type": "STAGE_SEPARATION", "time": t, "stage_index": idx})
         state[6] = max(state[6], dry_mass_floor(rocket, vehicle))
+
+        events.append(
+            make_event(
+                rocket=rocket,
+                vehicle=vehicle,
+                state=state,
+                event_type="STAGE_SEPARATION",
+                time_value=t,
+                stage_index=idx,
+                separated_stage_dry_mass=float(stage.dry_mass),
+            )
+        )
 
         print(
             "DEBUG -> stage separated:",
@@ -435,6 +509,7 @@ def separate_empty_stage_if_needed(
     sync_active_stage(vehicle, rocket)
     print("DEBUG -> new active_stage_index =", vehicle.active_stage_index)
     return state
+
 
 def atmospheric_properties(
     t: float,
@@ -626,7 +701,7 @@ def propagate_phase_burn(
         sync_active_stage(vehicle, rocket)
         stg = current_stage(vehicle, rocket)
         if stg is None:
-            events.append({"type": "NO_ACTIVE_STAGE", "time": t})
+            events.append(make_event(rocket, vehicle, state, "NO_ACTIVE_STAGE", t))
             break
 
         thrust_n, isp_s = current_stage_thrust_isp(
@@ -645,13 +720,13 @@ def propagate_phase_burn(
 
         if thrust_n <= 0.0 or isp_s <= 0.0:
             print("  DEBUG -> NO_THRUST")
-            events.append({"type": "NO_THRUST", "time": t})
+            events.append(make_event(rocket, vehicle, state, "NO_THRUST", t))
             break
 
         mdot = thrust_n / (isp_s * G0)
         if mdot <= 0.0:
             print("  DEBUG -> INVALID_MDOT")
-            events.append({"type": "INVALID_MDOT", "time": t})
+            events.append(make_event(rocket, vehicle, state, "INVALID_MDOT", t, mdot=float(mdot)))
             break
 
         h = min(dt, remaining)
@@ -677,7 +752,13 @@ def propagate_phase_burn(
 
         dom = dominant_body_for_position(t, state[:3], bodies)
         if dom.name != dominant_body.name:
-            events.append({"type": "SOI_CHANGE", "time": t, "from": dominant_body.name, "to": dom.name})
+            events.append(
+                make_event(
+                    rocket, vehicle, state, "SOI_CHANGE", t,
+                    from_body=dominant_body.name,
+                    to_body=dom.name,
+                )
+            )
             dominant_body = dom
 
         direction = burn_direction(cmd, state[:3], state[3:6], dominant_body, t)
@@ -699,6 +780,8 @@ def propagate_phase_burn(
             h=h,
             state=state,
             next_state=next_state,
+            rocket=rocket,
+            vehicle=vehicle,
             dominant_body=dominant_body,
             times=times,
             states=states,
@@ -756,7 +839,13 @@ def propagate_phase_coast(
 
         dom = dominant_body_for_position(t, state[:3], bodies)
         if dom.name != dominant_body.name:
-            events.append({"type": "SOI_CHANGE", "time": t, "from": dominant_body.name, "to": dom.name})
+            events.append(
+                make_event(
+                    rocket, vehicle, state, "SOI_CHANGE", t,
+                    from_body=dominant_body.name,
+                    to_body=dom.name,
+                )
+            )
             dominant_body = dom
 
         next_state = rk4_step(
@@ -776,6 +865,8 @@ def propagate_phase_coast(
             h=h,
             state=state,
             next_state=next_state,
+            rocket=rocket,
+            vehicle=vehicle,
             dominant_body=dominant_body,
             times=times,
             states=states,
@@ -821,13 +912,18 @@ def propagate_phase_target_orbit(
 
     while remaining > 1e-9:
         if orbit_is_close_to_target(dominant_body, t, state, cmd):
-            events.append({"type": "TARGET_ORBIT_REACHED", "time": t, "body": dominant_body.name})
+            events.append(
+                make_event(
+                    rocket, vehicle, state, "TARGET_ORBIT_REACHED", t,
+                    body=dominant_body.name,
+                )
+            )
             break
 
         sync_active_stage(vehicle, rocket)
         stg = current_stage(vehicle, rocket)
         if stg is None:
-            events.append({"type": "NO_ACTIVE_STAGE", "time": t})
+            events.append(make_event(rocket, vehicle, state, "NO_ACTIVE_STAGE", t))
             break
 
         thrust_n, isp_s = current_stage_thrust_isp(
@@ -846,13 +942,13 @@ def propagate_phase_target_orbit(
 
         if thrust_n <= 0.0 or isp_s <= 0.0:
             print("  DEBUG -> NO_THRUST")
-            events.append({"type": "NO_THRUST", "time": t})
+            events.append(make_event(rocket, vehicle, state, "NO_THRUST", t))
             break
 
         mdot = thrust_n / (isp_s * G0)
         if mdot <= 0.0:
             print("  DEBUG -> INVALID_MDOT")
-            events.append({"type": "INVALID_MDOT", "time": t})
+            events.append(make_event(rocket, vehicle, state, "INVALID_MDOT", t, mdot=float(mdot)))
             break
 
         h = min(dt, remaining)
@@ -878,7 +974,13 @@ def propagate_phase_target_orbit(
 
         dom = dominant_body_for_position(t, state[:3], bodies)
         if dom.name != dominant_body.name:
-            events.append({"type": "SOI_CHANGE", "time": t, "from": dominant_body.name, "to": dom.name})
+            events.append(
+                make_event(
+                    rocket, vehicle, state, "SOI_CHANGE", t,
+                    from_body=dominant_body.name,
+                    to_body=dom.name,
+                )
+            )
             dominant_body = dom
 
         burn_cmd = BurnCommand(
@@ -906,6 +1008,8 @@ def propagate_phase_target_orbit(
             h=h,
             state=state,
             next_state=next_state,
+            rocket=rocket,
+            vehicle=vehicle,
             dominant_body=dominant_body,
             times=times,
             states=states,
@@ -961,11 +1065,22 @@ def propagate_phase_soi_change(
     while remaining > 1e-9:
         current_dom = dominant_body_for_position(t, state[:3], bodies)
         if current_dom.name != dominant_body.name:
-            events.append({"type": "SOI_CHANGE", "time": t, "from": dominant_body.name, "to": current_dom.name})
+            events.append(
+                make_event(
+                    rocket, vehicle, state, "SOI_CHANGE", t,
+                    from_body=dominant_body.name,
+                    to_body=current_dom.name,
+                )
+            )
             dominant_body = current_dom
 
         if dominant_body.name == cmd.target_body_name:
-            events.append({"type": "TARGET_SOI_REACHED", "time": t, "body": dominant_body.name})
+            events.append(
+                make_event(
+                    rocket, vehicle, state, "TARGET_SOI_REACHED", t,
+                    body=dominant_body.name,
+                )
+            )
             break
 
         h = min(dt, remaining)
@@ -987,6 +1102,8 @@ def propagate_phase_soi_change(
             h=h,
             state=state,
             next_state=next_state,
+            rocket=rocket,
+            vehicle=vehicle,
             dominant_body=dominant_body,
             times=times,
             states=states,
@@ -1058,14 +1175,18 @@ def run_mission_3d(
     all_phase_names = ["INIT"]
     all_events: list[dict] = []
 
-    # Seguridad extra: impacto inmediato en el estado inicial
     if has_impacted_body(t, state[:3], dominant_body):
-        all_events.append({
-            "type": "IMPACT",
-            "time": t,
-            "body": dominant_body.name,
-            "altitude_m": 0.0,
-        })
+        all_events.append(
+            make_event(
+                rocket=rocket,
+                vehicle=vehicle,
+                state=state,
+                event_type="IMPACT",
+                time_value=t,
+                body=dominant_body.name,
+                altitude_m=0.0,
+            )
+        )
         return SimulationResult3D(
             times=np.array(all_times, dtype=float),
             states=np.array(all_states, dtype=float),

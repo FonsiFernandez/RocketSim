@@ -214,6 +214,13 @@ def format_distance_m(value_m: float) -> str:
         return f"{value_m/1000:.2f} km"
     return f"{value_m/1_000_000:.3f} Mm"
 
+def format_mass_kg(value: float) -> str:
+    value = float(value)
+    if abs(value) < 1000:
+        return f"{value:.1f} kg"
+    if abs(value) < 1_000_000:
+        return f"{value / 1000.0:.2f} t"
+    return f"{value / 1_000_000.0:.3f} kt"
 
 def downsample_indices(n: int, max_points: int = 2500) -> np.ndarray:
     if n <= max_points:
@@ -809,7 +816,7 @@ def render_events(events: list[dict], lang: str):
         if ev.get("type") == "SOI_CHANGE":
             st.write(
                 f"- **{format_seconds(ev.get('time', 0.0))}** · {tr('event_soi_change', lang)}: "
-                f"{ev.get('from', '?')} → {ev.get('to', '?')}"
+                f"{ev.get('from_body', '?')} → {ev.get('to_body', '?')}"
             )
         elif ev.get("type") == "TARGET_SOI_REACHED":
             st.write(
@@ -1777,6 +1784,59 @@ def attach_events_to_phases(events: list[dict], phase_intervals: list[dict]):
 
     return grouped
 
+def render_event_propellant_snapshot(ev: dict):
+    vehicle_mass = ev.get("vehicle_mass")
+    total_remaining = ev.get("total_propellant_remaining")
+    total_used = ev.get("total_propellant_used")
+    active_stage_index = ev.get("active_stage_index")
+    stages = ev.get("stages", [])
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        if vehicle_mass is not None:
+            st.write(f"**Vehicle mass:** {format_mass_kg(vehicle_mass)}")
+
+    with c2:
+        if total_remaining is not None:
+            st.write(f"**Propellant remaining:** {format_mass_kg(total_remaining)}")
+
+    with c3:
+        if total_used is not None:
+            st.write(f"**Propellant used:** {format_mass_kg(total_used)}")
+
+    if not stages:
+        return
+
+    rows = []
+    for stage in stages:
+        idx = int(stage.get("stage_index", 0))
+        dropped = bool(stage.get("dropped", False))
+        remaining = float(stage.get("remaining_propellant", 0.0))
+        used = float(stage.get("used_propellant", 0.0))
+        initial = float(stage.get("initial_propellant", 0.0))
+
+        if initial > 0:
+            pct_used = 100.0 * used / initial
+            pct_remaining = 100.0 * remaining / initial
+        else:
+            pct_used = 0.0
+            pct_remaining = 0.0
+
+        status = "active" if active_stage_index == idx else ("dropped" if dropped else "pending")
+
+        rows.append({
+            "Stage": idx + 1,
+            "Status": status,
+            "Initial propellant": f"{initial:,.1f} kg",
+            "Remaining": f"{remaining:,.1f} kg",
+            "Used": f"{used:,.1f} kg",
+            "Remaining %": f"{pct_remaining:.1f}%",
+            "Used %": f"{pct_used:.1f}%",
+        })
+
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
 def render_events_by_phase(result, phases: List[MissionPhase], lang: str):
     phase_intervals = build_phase_intervals(result.times, result.phase_names)
     grouped = attach_events_to_phases(result.events, phase_intervals)
@@ -1811,27 +1871,37 @@ def render_events_by_phase(result, phases: List[MissionPhase], lang: str):
 
             if not events:
                 st.write("No events in this phase.")
-            else:
-                for ev in events:
-                    ev_t = float(ev.get("time", 0.0))
-                    ev_type = ev.get("type", "EVENT")
+                continue
 
-                    if ev_type == "SOI_CHANGE":
-                        desc = f"{ev.get('from', '?')} → {ev.get('to', '?')}"
-                    elif ev_type == "TARGET_SOI_REACHED":
-                        desc = f"Target SOI reached: {ev.get('body', '?')}"
-                    elif ev_type == "TARGET_ORBIT_REACHED":
-                        desc = f"Target orbit reached: {ev.get('body', '?')}"
-                    elif ev_type == "STAGE_SEPARATION":
-                        desc = f"Stage separation: {ev.get('stage_index', 0) + 1}"
-                    elif ev_type == "NO_ACTIVE_STAGE":
-                        desc = "No active stage"
-                    elif ev_type == "NO_THRUST":
-                        desc = "No thrust"
-                    else:
-                        desc = str(ev)
+            for ev in events:
+                ev_t = float(ev.get("time", 0.0))
+                ev_type = ev.get("type", "EVENT")
 
-                    st.write(f"- **{format_seconds(ev_t)}** · `{ev_type}` · {desc}")
+                if ev_type == "SOI_CHANGE":
+                    desc = f"{ev.get('from_body', '?')} → {ev.get('to_body', '?')}"
+                elif ev_type == "TARGET_SOI_REACHED":
+                    desc = f"Target SOI reached: {ev.get('body', '?')}"
+                elif ev_type == "TARGET_ORBIT_REACHED":
+                    desc = f"Target orbit reached: {ev.get('body', '?')}"
+                elif ev_type == "STAGE_SEPARATION":
+                    desc = f"Stage separation: {ev.get('stage_index', 0) + 1}"
+                elif ev_type == "NO_ACTIVE_STAGE":
+                    desc = "No active stage"
+                elif ev_type == "NO_THRUST":
+                    desc = "No thrust"
+                elif ev_type == "INVALID_MDOT":
+                    desc = f"Invalid mass flow rate: {ev.get('mdot', 0.0):.6f} kg/s"
+                elif ev_type == "IMPACT":
+                    desc = f"Impact on {ev.get('body', '?')}"
+                else:
+                    desc = str(ev)
+
+                st.markdown(f"#### {format_seconds(ev_t)} · `{ev_type}`")
+                st.write(desc)
+
+                render_event_propellant_snapshot(ev)
+
+                st.markdown("---")
 
 if __name__ == "__main__":
     main()
